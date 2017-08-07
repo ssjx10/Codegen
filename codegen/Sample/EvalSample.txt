@@ -1,0 +1,111 @@
+package com.example.java;
+import java.util.ArrayList;
+public class Test {
+    static Env env;
+    static boolean debug;
+    private static String[] programArgs;
+
+public void eval(String[] args) {
+	programArgs = args;
+        eval();
+        return env;
+    }
+
+public void eval() {
+		env = new Env();
+		env.label("$main");
+
+		while (env.label() != null) {
+			Stmt stmt = bbEnv.get(env.label());
+			env.label(null);
+			eval(bbEnv, env, stmt);
+		}
+	}
+
+public void eval(BasicBlockEnv bbEnv, Env env, Assign assignStmt) {
+		Expr lhs = assignStmt.getLSide();
+		Expr rhs = assignStmt.getRSide();
+
+		// Value v1 = eval(env, lhs);
+		Value v2 = eval(env, rhs);
+
+		// Assigning an array is done by copy.
+		if (v2 instanceof ArrayV) {
+			v2 = ((ArrayV)v2).copy();
+		}
+
+		if (lhs instanceof Var) {
+			env.put(((Var) lhs).getVarName(), v2);
+		} else if (lhs instanceof PropertyExpr) {
+			try {
+				String clzName = ((PropertyExpr) lhs).getObj();
+				Class clz = getClass(clzName);
+				Field fld = clz.getField(((PropertyExpr) lhs).getName());
+				fld.set(null, v2);
+
+				// After any field assignment, invoke notifyFieldAssign for
+				// Library to know
+				// the change of the field value.
+				Method mth = clz.getMethod(notifyFieldAssign, String.class);
+				mth.invoke(null, ((PropertyExpr) lhs).getName());
+			} catch (NoSuchFieldException | SecurityException e) {
+				throw new InterpretException("Assign : " + e.toString());
+			} catch (IllegalArgumentException e) {
+				throw new InterpretException("Assign : " + e.toString());
+			} catch (IllegalAccessException e) {
+				throw new InterpretException("Assign : " + e.toString());
+			} catch (ClassNotFoundException e) {
+				throw new InterpretException("Class Not Found " + e.toString());
+			} catch (NoSuchMethodException e) {
+				throw new InterpretException("Method Not Found " + e.toString());
+			} catch (InvocationTargetException e) {
+				throw new InterpretException("Target Not Found " + e.toString() + ": ");
+			}
+		} else if (lhs instanceof Array) {
+			Array arr = (Array) lhs;
+			Value arrValue = env.get(arr.getVar());
+			ArrayV elem;
+			if (arrValue == null)
+				elem = null;
+			/*else if (arrValue instanceof ArrayV)
+				elem = (ArrayV) arrValue;
+			else {
+				elem = null;
+			}*/
+
+			if (elem == null) {
+				elem = new ArrayV();
+				env.put(arr.getVar(), elem);
+			}
+
+			for (int i = 0; i < arr.getDim(); i++) {
+				Expr idx = arr.getIndex(i);
+				Value v = eval(env, idx);
+				String idx_s;
+
+				/*if (v == null || v.toString().trim().equals(""))
+					idx_s = "0";
+				else if (v instanceof StrV || v instanceof DoubleV) {
+					idx_s = v.toString();
+				} else {
+					throw new InterpretException("Unexpected Index" + v);
+				}*/
+
+				if (i < arr.getDim() - 1) {
+					ArrayV elem_elem = (ArrayV) elem.get(idx_s);
+					if (elem_elem == null) {
+						elem_elem = new ArrayV();
+						elem.put(idx_s, elem_elem);
+					}
+					elem = elem_elem;
+				} else {
+					elem.put(idx_s, v2);
+				}
+			}
+		} else {
+			throw new InterpretException("Assign : Unknown lhs " + lhs);
+		}
+
+	}
+
+}
